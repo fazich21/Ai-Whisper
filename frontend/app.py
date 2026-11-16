@@ -2,6 +2,48 @@ import pandas as pd
 import requests
 import streamlit as st
 
+
+import socket
+import sys
+import threading
+import time
+from pathlib import Path
+
+import uvicorn
+
+# Make the backend folder importable (so "from main import app" works)
+BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
+sys.path.insert(0, str(BACKEND_DIR))
+
+
+def backend_is_running() -> bool:
+    """True if something already listens on port 8000."""
+    with socket.socket() as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", 8000)) == 0
+
+
+@st.cache_resource          # runs only once, not on every click
+def start_backend():
+    if backend_is_running():            # e.g. you started uvicorn yourself
+        return
+    from main import app as fastapi_app
+    config = uvicorn.Config(fastapi_app, host="127.0.0.1", port=8000, log_level="warning")
+    server = uvicorn.Server(config)
+    threading.Thread(target=server.run, daemon=True).start()
+    for _ in range(50):                 # wait up to 5 seconds until it is ready
+        if server.started:
+            break
+        time.sleep(0.1)
+
+
+try:
+    start_backend()
+except Exception as e:
+    st.error(f"Backend could not start: {e}")
+    st.stop()
+
+
 API_URL = "http://127.0.0.1:8000"
 
 st.title("AI Meeting Notes Generator")
